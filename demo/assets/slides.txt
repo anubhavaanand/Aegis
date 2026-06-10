@@ -1,0 +1,9 @@
+file '/home/anubhavanand/Aegis/demo/assets/aegis_cover_image.png'
+duration 12.0
+file '/home/anubhavanand/Aegis/demo/assets/reconciliation_report.png'
+duration 35.0
+file '/home/anubhavanand/Aegis/demo/assets/approval_gate.png'
+duration 13.0
+file '/home/anubhavanand/Aegis/demo/assets/corrected_status.png'
+duration 14.35
+file '/home/anubhavanand/Aegis/demo/assets/corrected_status.png'
