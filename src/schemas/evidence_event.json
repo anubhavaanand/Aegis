@@ -1,0 +1,51 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "aegis/schemas/evidence_event",
+  "title": "EvidenceEvent",
+  "description": "Normalized evidence event from any agent runtime, aligned with OpenInference/Phoenix span model",
+  "type": "object",
+  "required": ["event_id", "event_type", "trace_id", "span_id", "agent_id", "status", "timestamp"],
+  "properties": {
+    "event_id": { "type": "string" },
+    "event_type": {
+      "type": "string",
+      "enum": ["model_call", "tool_call", "file_change", "test_result", "command", "external_action", "span"]
+    },
+    "trace_id": { "type": "string" },
+    "span_id": { "type": "string" },
+    "parent_span_id": { "type": ["string", "null"] },
+    "agent_id": { "type": "string" },
+    "capability_id": { "type": ["string", "null"] },
+    "input_summary": { "type": "string" },
+    "output_summary": { "type": "string" },
+    "status": {
+      "type": "string",
+      "enum": ["success", "failure", "skipped", "partial", "error"]
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "type": { "type": "string" },
+          "path": { "type": "string" },
+          "url": { "type": "string" },
+          "description": { "type": "string" }
+        }
+      }
+    },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "end_timestamp": { "type": ["string", "null"], "format": "date-time" },
+    "latency_ms": { "type": ["integer", "null"] },
+    "token_usage": {
+      "type": ["object", "null"],
+      "properties": {
+        "input_tokens": { "type": "integer" },
+        "output_tokens": { "type": "integer" },
+        "total_tokens": { "type": "integer" }
+      }
+    },
+    "error": { "type": ["string", "null"] },
+    "metadata": { "type": "object" }
+  }
+}

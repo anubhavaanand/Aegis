@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "aegis"
+version = "0.1.0"
+description = "Post-execution state reconciliation and trace audit layer for agent runtimes"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Aegis Contributors" }]
+
+dependencies = [
+    "pydantic>=2.7",
+    "rich>=13.7",
+    "typer>=0.12",
+    "python-dateutil>=2.9",
+    "jsonschema>=4.22",
+    "openinference-semantic-conventions>=0.1.9",
+    "opentelemetry-sdk>=1.24",
+    "opentelemetry-exporter-otlp>=1.24",
+    "arize-phoenix-client>=0.1.0",
+]
+
+[project.optional-dependencies]
+adk = ["google-adk>=0.3"]
+dev = [
+    "pytest>=8.2",
+    "pytest-asyncio>=0.23",
+    "pytest-cov>=5.0",
+    "ruff>=0.4",
+    "mypy>=1.10",
+]
+
+[project.scripts]
+aegis = "aegis.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]

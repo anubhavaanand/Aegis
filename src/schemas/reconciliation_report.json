@@ -1,0 +1,58 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "aegis/schemas/reconciliation_report",
+  "title": "ReconciliationReport",
+  "description": "Output of the Aegis reconciliation engine",
+  "type": "object",
+  "required": ["task_id", "status", "created_at"],
+  "properties": {
+    "task_id": { "type": "string" },
+    "status": {
+      "type": "string",
+      "enum": ["complete", "partial", "drifted", "failed", "suboptimal", "corrected"]
+    },
+    "unmet_criteria": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "criterion_id": { "type": "string" },
+          "description": { "type": "string" },
+          "evidence_quality": { "type": "string", "enum": ["strong", "weak", "absent"] },
+          "notes": { "type": "string" }
+        }
+      }
+    },
+    "weak_evidence": {
+      "type": "array",
+      "items": { "type": "object" }
+    },
+    "missed_capabilities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "capability_id": { "type": "string" },
+          "name": { "type": "string" },
+          "reason": { "type": "string" },
+          "impact": { "type": "string", "enum": ["critical", "significant", "minor"] }
+        }
+      }
+    },
+    "recommended_repairs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "repair_id": { "type": "string" },
+          "description": { "type": "string" },
+          "targets_criterion": { "type": "string" },
+          "capability_id": { "type": ["string", "null"] },
+          "priority": { "type": "string", "enum": ["required", "optional"] }
+        }
+      }
+    },
+    "evidence_summary": { "type": "object" },
+    "created_at": { "type": "string", "format": "date-time" }
+  }
+}

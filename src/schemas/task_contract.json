@@ -1,0 +1,49 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "aegis/schemas/task_contract",
+  "title": "TaskContract",
+  "description": "Structured contract representing a user task and its success criteria",
+  "type": "object",
+  "required": ["task_id", "user_request", "goal", "success_criteria", "risk_level"],
+  "properties": {
+    "task_id": { "type": "string", "description": "Unique identifier for this task" },
+    "user_request": { "type": "string", "description": "Original user request verbatim" },
+    "goal": { "type": "string", "description": "Distilled intent of the request" },
+    "constraints": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Explicit constraints or guardrails"
+    },
+    "success_criteria": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["criterion_id", "description", "verifier_type"],
+        "properties": {
+          "criterion_id": { "type": "string" },
+          "description": { "type": "string" },
+          "verifier_type": {
+            "type": "string",
+            "enum": ["file_diff", "test_pass", "doc_section", "pr_exists", "command_output", "manual"]
+          },
+          "verifier_config": { "type": "object" },
+          "required": { "type": "boolean", "default": true }
+        }
+      }
+    },
+    "expected_state_changes": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "risk_level": {
+      "type": "string",
+      "enum": ["low", "medium", "high", "critical"]
+    },
+    "approval_required_for": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "created_at": { "type": "string", "format": "date-time" },
+    "tags": { "type": "array", "items": { "type": "string" } }
+  }
+}

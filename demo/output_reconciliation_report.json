@@ -1,0 +1,88 @@
+{
+  "task_id": "7806bfe0-a57b-4118-b84f-ebf74c70610f",
+  "status": "failed",
+  "unmet_criteria": [
+    {
+      "criterion_id": "622ff8c1-bf57-4bda-8dbc-1af6c7ea4ec9",
+      "description": "Bug is fixed: source code diff exists with the change",
+      "evidence_quality": "absent",
+      "notes": "No file change events in trace and no git diff found"
+    },
+    {
+      "criterion_id": "426318d8-9ae7-4e2f-b177-c8840a0ba2d3",
+      "description": "Tests pass: all relevant tests complete without failure",
+      "evidence_quality": "absent",
+      "notes": "No test execution events found in trace"
+    },
+    {
+      "criterion_id": "4d0cdc4d-365d-48eb-9138-b63138349e4e",
+      "description": "Documentation updated: relevant doc sections exist and are current",
+      "evidence_quality": "absent",
+      "notes": "No documentation changes found in trace or git diff"
+    },
+    {
+      "criterion_id": "fa4b3405-3e5b-482b-8f69-b2979b309cbb",
+      "description": "Pull request created or exists in the repository",
+      "evidence_quality": "absent",
+      "notes": "No PR creation evidence found in trace"
+    }
+  ],
+  "weak_evidence": [],
+  "missed_capabilities": [
+    {
+      "capability_id": "f031a326-d3ec-4dbf-9d0f-f76fca84bba2",
+      "name": "read_file",
+      "reason": "Criterion 'Bug is fixed: source code diff exists with the change' was not satisfied. 'read_file' (Read a file from the local filesystem) was available and tagged for this use case but was not used.",
+      "impact": "critical",
+      "metadata": {
+        "criterion_id": "622ff8c1-bf57-4bda-8dbc-1af6c7ea4ec9"
+      }
+    },
+    {
+      "capability_id": "e3fc7e49-538b-465a-8092-b22879f911fb",
+      "name": "git_diff",
+      "reason": "Criterion 'Tests pass: all relevant tests complete without failure' was not satisfied. 'git_diff' (Show file differences using git diff) was available and tagged for this use case but was not used.",
+      "impact": "significant",
+      "metadata": {
+        "criterion_id": "426318d8-9ae7-4e2f-b177-c8840a0ba2d3"
+      }
+    },
+    {
+      "capability_id": "8f4ba914-e08b-4777-8fd2-d2e444a75901",
+      "name": "doc_updater",
+      "reason": "Criterion 'Documentation updated: relevant doc sections exist and are current' was not satisfied. 'doc_updater' (Skill to update documentation sections to reflect code changes) was available and tagged for this use case but was not used.",
+      "impact": "minor",
+      "metadata": {
+        "criterion_id": "4d0cdc4d-365d-48eb-9138-b63138349e4e"
+      }
+    },
+    {
+      "capability_id": "5f357abf-ab07-4ce2-84cb-23376b8a3757",
+      "name": "git_create_pr",
+      "reason": "Criterion 'Pull request created or exists in the repository' was not satisfied. 'git_create_pr' (Create a pull request using git/gh CLI) was available and tagged for this use case but was not used.",
+      "impact": "critical",
+      "metadata": {
+        "criterion_id": "fa4b3405-3e5b-482b-8f69-b2979b309cbb"
+      }
+    }
+  ],
+  "recommended_repairs": [],
+  "evidence_summary": {
+    "total_events": 3,
+    "successful_events": 3,
+    "failed_events": 0,
+    "tool_calls": 3,
+    "model_calls": 0,
+    "file_changes": 0,
+    "test_results": 0,
+    "capabilities_used": [
+      "read_file",
+      "pytest_runner",
+      "write_file"
+    ],
+    "traces": [
+      "c98678c4-b026-4c7f-87e4-2ed88a3b8206"
+    ]
+  },
+  "created_at": "2026-06-10T17:45:56.215818Z"
+}

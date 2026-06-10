@@ -1,0 +1,49 @@
+{
+  "task_id": "demo-001-login-bug",
+  "user_request": "Fix the login validation bug, update docs, run tests, and create a PR.",
+  "goal": "Fix the login validation bug: update docs, run tests, and create a PR.",
+  "constraints": [
+    "Do not change the public API signature of validate_login()",
+    "All existing tests must continue to pass",
+    "PR must reference the bug ticket"
+  ],
+  "success_criteria": [
+    {
+      "criterion_id": "crit-001",
+      "description": "Bug is fixed: source code diff exists with the change",
+      "verifier_type": "file_diff",
+      "verifier_config": {},
+      "required": true
+    },
+    {
+      "criterion_id": "crit-002",
+      "description": "Tests pass: all relevant tests complete without failure",
+      "verifier_type": "test_pass",
+      "verifier_config": {},
+      "required": true
+    },
+    {
+      "criterion_id": "crit-003",
+      "description": "Documentation updated: relevant doc sections exist and are current",
+      "verifier_type": "doc_section",
+      "verifier_config": {},
+      "required": true
+    },
+    {
+      "criterion_id": "crit-004",
+      "description": "Pull request created or exists in the repository",
+      "verifier_type": "pr_exists",
+      "verifier_config": {},
+      "required": true
+    }
+  ],
+  "expected_state_changes": [
+    "Source files modified",
+    "Test files updated or added",
+    "Documentation updated",
+    "Pull request opened"
+  ],
+  "risk_level": "high",
+  "approval_required_for": ["pr"],
+  "tags": ["bug-fix", "auth", "demo"]
+}

@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "aegis/schemas/capability",
+  "title": "Capability",
+  "description": "A normalized capability entry in the Aegis registry",
+  "type": "object",
+  "required": ["capability_id", "name", "type", "source", "description", "risk_level"],
+  "properties": {
+    "capability_id": { "type": "string" },
+    "name": { "type": "string" },
+    "type": {
+      "type": "string",
+      "enum": ["local_tool", "shell_command", "mcp_tool", "skill", "plugin", "workflow", "subagent", "template", "external_api"]
+    },
+    "source": { "type": "string", "description": "Where this capability comes from" },
+    "description": { "type": "string" },
+    "preferred_use_cases": { "type": "array", "items": { "type": "string" } },
+    "risk_level": { "type": "string", "enum": ["low", "medium", "high", "critical"] },
+    "requires_approval": { "type": "boolean", "default": false },
+    "tags": { "type": "array", "items": { "type": "string" } },
+    "enabled": { "type": "boolean", "default": true },
+    "metadata": { "type": "object" }
+  }
+}
