@@ -116,6 +116,99 @@ User Request
 └──────────────────────────┘      Result: CORRECTED ✅ or UNRESOLVED ✗
 ```
 
+## Command Line Interface (CLI)
+
+Aegis now comes with a unified command-line tool built on Typer.
+
+### CLI Installation
+
+To register the `aegis` entrypoint globally, run:
+```bash
+pip install -e . --break-system-packages
+```
+Once installed, you can invoke the CLI using the `aegis` command. (Alternatively, run it via `python -m aegis.cli`).
+
+### Commands
+
+*   **`aegis run --request "<request>" [--auto] [--retries N] [--real] [--semantic] [--policy <in-process|opa>]`**
+    Executes a task through the complete Aegis self-healing verification loop.
+    *   `--request` (`-r`): Verbatim user request statement.
+    *   `--auto` (`-y`): Run non-interactively, auto-approving proposed repairs (ideal for CI/CD environments).
+    *   `--retries` (`-n`): Max repair retries (defaults to 2).
+    *   `--real`: Executes with a real OTel-instrumented Google ADK agent instead of simulated run.
+    *   `--semantic`: Enables LLM-as-Judge semantic verification using `gemini-2.5-flash` structured outputs.
+    *   `--policy`: Policy engine mode (either `in-process` or `opa`, defaults to `in-process`).
+*   **`aegis discover-capabilities [--config <path>] [--output <path>]`**
+    Auto-discovers capabilities from Model Context Protocol (MCP) server configurations and saves them to a capability manifest.
+    *   `--config` (`-c`): Optional custom path to MCP `servers.json`. (Checks `~/.config/mcp/servers.json`, `.mcp.json`, and `mcp.json` by default).
+    *   `--output` (`-o`): Output JSON manifest path (defaults to `capabilities_manifest.json`).
+*   **`aegis list-audits`**
+    Lists all stored compliance audit logs in a clean Rich table.
+*   **`aegis report --task-id <id>`**
+    Inspects and renders a historical compliance report from the audit archive.
+
+---
+
+## Environment Variables
+
+Aegis supports the following environment variables for advanced configuration:
+
+*   `AEGIS_SEMANTIC_VERIFY`: Set to `true` to enable semantic task validation. (Requires `GOOGLE_API_KEY`).
+*   `AEGIS_POLICY_ENGINE`: Set to `opa` to delegate policy evaluations to an Open Policy Agent instance.
+*   `AEGIS_OPA_URL`: The REST API URL of the OPA server (defaults to `http://localhost:8181`).
+*   `AEGIS_PROTECTED_PATHS`: Comma-separated list of directories/files that should be protected (any changes to these paths trigger mandatory human review in default policy).
+*   `AEGIS_AUTO_APPROVE_LOW_RISK`: Set to `true` to automatically approve low-risk repair tasks.
+*   `AEGIS_AUDIT_DIR`: Custom directory to save compliance audit reports.
+
+---
+
+## Persistent Compliance Audit Trails
+
+Aegis writes a structured compliance audit log for every task execution to `~/.aegis/audit/{date}/{task_id}.json` (override via the `AEGIS_AUDIT_DIR` environment variable). This fulfills high-risk logging requirements under modern AI frameworks (e.g. EU AI Act process logging).
+
+### Audit Trail Schema Structure
+```json
+{
+  "schema_version": "1.0",
+  "task_id": "84ab00e3-990e-4f8b-8fd2-65cd391caf6d",
+  "timestamp": "2026-06-11T08:38:00.000000+00:00",
+  "contract": { ...TaskContract snapshot... },
+  "drift_report": { ...ReconciliationReport... },
+  "evidence_summary": { ...EvidenceSummary... },
+  "approval_decision": {
+    "approved": true,
+    "selected_steps": [...],
+    "notes": "User approved all steps"
+  },
+  "repair_steps": [...],
+  "final_report": { ...post-repair ReconciliationReport... },
+  "final_status": "corrected"
+}
+```
+
+---
+
+## Three-Phase Roadmap (Maximum Potential)
+
+Aegis’s long-term vision is organized into a three-phase architecture:
+
+*   **Phase 1: Production-Ready Verification (Shipped)**
+    *   **Persistent Compliance Audit Trails:** Timestamped, schema-versioned JSON logs for every audit run.
+    *   **Risk-Tiered Approval Automation:** Auto-approvals for `LOW` risk tasks (via `AEGIS_AUTO_APPROVE_LOW_RISK=true`), 30-second timed gates for `MEDIUM` risk tasks, and blocking prompts for `HIGH`/`CRITICAL` tasks.
+    *   **Iterative Self-Healing Loops:** Bounded retry loops (default 2) passing failure context (verbal critiques) to subsequent iterations.
+    *   **Unified CLI Interface:** `run`, `report`, `list-audits`, and `discover-capabilities` subcommands.
+*   **Phase 2: LLM-Backed Contract Intelligence & Observability (Shipped)**
+    *   **LLM Contract Builder (Opt-In):** Gemini structured JSON contract generation (`AEGIS_CONTRACT_MODE=llm`) with heuristic fallback.
+    *   **MCP Server Auto-Discovery:** Dynamic registry tool discovery scanning standard and local configs.
+    *   **Semantic Verification (LLM-as-Judge):** Gemini 2.5 structured output validation comparing intent and drift reports.
+    *   **OPA & Rego Policy Integration:** Policy engine supporting in-process rules and OPA REST HTTP delegation.
+*   **Phase 3: Reusable Standards & Services (Planned)**
+    *   **Aegis Python SDK:** Publishing programmatic imports (`import aegis`) to decouple from subprocess CLIs.
+    *   **A2A Verifier Agent:** Wrapping Aegis as a standard Agent-to-Agent protocol service enabling remote or team orchestrators to request audits.
+    *   **OTel Thinking Span Extraction:** Normalizing internal reasoning attributes to audit cognitive step drift.
+
+---
+
 ### Module Layout
 ```
 src/
@@ -128,7 +221,10 @@ src/
 │   ├── capability_auditor.py      # Checks traces for underutilized or missed capabilities
 │   ├── repair_planner.py          # Formulates the corrective plan steps
 │   ├── approval_manager.py        # Handles the blocking user approval loop
-│   └── final_verifier.py          # Performs post-repair verification
+│   ├── final_verifier.py          # Performs post-repair verification
+│   ├── audit_logger.py            # Persists structured compliance logs
+│   ├── runner.py                  # Coordinates the closed-loop execution & self-healing
+│   └── cli.py                     # Typer command line interface
 ├── adapters/                      # Runtime-specific integrations
 │   ├── adk_adapter.py             # Google ADK Adapter (runs simulated / real worker)
 │   ├── real_adk_worker.py         # Real ADK agent runner instrumented with OTel

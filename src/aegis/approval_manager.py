@@ -18,6 +18,7 @@ The approval screen shows:
 
 from __future__ import annotations
 
+import os
 import sys
 from typing import Callable
 
@@ -62,6 +63,7 @@ class ApprovalManager:
         contract: TaskContract,
         report: ReconciliationReport,
         repair_steps: list[RepairStep],
+        auto_approve: bool = False,
     ) -> ApprovalDecision:
         """
         Show the drift report and proposed repair plan, then wait for approval.
@@ -77,9 +79,43 @@ class ApprovalManager:
             print("\n[No repair steps proposed — nothing to approve.]")
             return ApprovalDecision(approved=False, selected_steps=[], notes="Nothing to repair")
 
-        answer = self._prompt(
-            "\nApprove repair plan? [y=yes / n=no / s=select steps]: "
-        ).strip().lower()
+        # 1. Programmatic auto-approve
+        if auto_approve:
+            return ApprovalDecision(
+                approved=True, selected_steps=repair_steps, notes="Auto-approved via program flag"
+            )
+
+        risk = str(contract.risk_level).lower()
+
+        # 2. Risk-tiered logic: LOW risk auto-approve if env var is set
+        if risk == "low" and os.environ.get("AEGIS_AUTO_APPROVE_LOW_RISK", "").lower() in ("true", "1", "yes"):
+            print("\n[Auto-approving LOW risk task compliance repair.]")
+            return ApprovalDecision(
+                approved=True, selected_steps=repair_steps, notes="Auto-approved LOW risk task"
+            )
+
+        # 3. Environment check: TTY / interactive check
+        is_tty = hasattr(sys.stdin, "isatty") and sys.stdin.isatty()
+        if not is_tty:
+            print("\n[Non-interactive environment detected — denying repair plan.]")
+            return ApprovalDecision(
+                approved=False, selected_steps=[], notes="Denied in non-interactive environment"
+            )
+
+        # 4. Prompting (with timeout for MEDIUM risk)
+        if risk == "medium":
+            print("\n[MEDIUM risk task — 30s timeout approval gate]")
+            answer = self._prompt_with_timeout(
+                "\nApprove repair plan? [y=yes (default) / n=no / s=select steps]: ",
+                timeout=30.0,
+                default="y",
+            )
+        else:
+            answer = self._prompt(
+                "\nApprove repair plan? [y=yes / n=no / s=select steps]: "
+            )
+
+        answer = answer.strip().lower()
 
         if answer in ("y", "yes"):
             return ApprovalDecision(
@@ -97,6 +133,30 @@ class ApprovalManager:
         return ApprovalDecision(
             approved=False, selected_steps=[], notes="User rejected repair plan"
         )
+
+    def _prompt_with_timeout(self, message: str, timeout: float = 30.0, default: str = "y") -> str:
+        """
+        Prompt the user for input with a timeout. Only active on Unix systems with a TTY.
+        """
+        import select
+
+        sys.stdout.write(message)
+        sys.stdout.flush()
+
+        try:
+            rlist, _, _ = select.select([sys.stdin], [], [], timeout)
+            if rlist:
+                return sys.stdin.readline().strip()
+            else:
+                sys.stdout.write(f"\n[Timeout — auto-approving default '{default}']\n")
+                sys.stdout.flush()
+                return default
+        except Exception:
+            # Fallback if select is not supported or fails
+            try:
+                return sys.stdin.readline().strip()
+            except (EOFError, KeyboardInterrupt):
+                return default
 
     # ------------------------------------------------------------------
     # Private helpers

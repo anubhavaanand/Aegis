@@ -27,6 +27,8 @@ from aegis.evidence_model import (
     EvidenceEvent,
     EventStatus,
     EventType,
+    NormalizedExecutionBundle,
+    WorkerResult as PydanticWorkerResult,
 )
 from .trace_adapter import TraceAdapter
 
@@ -199,7 +201,7 @@ class ADKAdapter:
         task_description: str,
         *,
         skip_steps: list[str] | None = None,
-    ) -> tuple[WorkerResult, list[EvidenceEvent]]:
+    ) -> NormalizedExecutionBundle:
         """
         Run the worker and return both the WorkerResult and normalized events.
 
@@ -208,7 +210,7 @@ class ADKAdapter:
             skip_steps: Steps to skip (for demo drift injection).
 
         Returns:
-            (WorkerResult, list[EvidenceEvent])
+            NormalizedExecutionBundle
         """
         if hasattr(self._worker, "run_async"):
             import asyncio
@@ -227,7 +229,18 @@ class ADKAdapter:
             result = self._worker.run(task_description, skip_steps=skip_steps)
 
         events = self._normalize(result)
-        return result, events
+        
+        pydantic_res = PydanticWorkerResult(
+            trace_id=result.trace_id,
+            agent_id=result.agent_id,
+            claimed_success=result.claimed_success,
+            summary=result.summary,
+            tool_calls=result.tool_calls,
+            raw_spans=result.raw_spans,
+            metadata=result.metadata,
+        )
+        
+        return NormalizedExecutionBundle(worker_result=pydantic_res, events=events)
 
     def _normalize(self, result: WorkerResult) -> list[EvidenceEvent]:
         """Convert a WorkerResult into Aegis EvidenceEvents."""

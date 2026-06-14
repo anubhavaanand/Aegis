@@ -7,8 +7,12 @@ success criteria, constraints, and risk assessment.
 
 from __future__ import annotations
 
+import json
+import os
 import re
 from typing import Any
+
+from pydantic import BaseModel, Field
 
 from .evidence_model import (
     RiskLevel,
@@ -16,6 +20,21 @@ from .evidence_model import (
     TaskContract,
     VerifierType,
 )
+
+# Pydantic models for Gemini structured output schemas
+class LLMSuccessCriterion(BaseModel):
+    description: str
+    verifier_type: str
+    verifier_config: dict[str, Any] = {}
+    required: bool = True
+
+class LLMTaskContract(BaseModel):
+    goal: str
+    constraints: list[str] = []
+    success_criteria: list[LLMSuccessCriterion]
+    expected_state_changes: list[str] = []
+    risk_level: str
+    approval_required_for: list[str] = []
 
 # ---------------------------------------------------------------------------
 # Heuristic keyword maps
@@ -101,6 +120,14 @@ class ContractBuilder:
         Returns:
             A validated TaskContract.
         """
+        mode = os.environ.get("AEGIS_CONTRACT_MODE", "heuristic").lower()
+        if mode == "llm":
+            try:
+                return self._build_llm(user_request, extra_criteria=extra_criteria)
+            except Exception as e:
+                print(f"[aegis.warn] LLM contract building failed ({e}). Falling back to heuristic builder.")
+
+        # Fallback / Default Heuristic Builder
         goal = self._extract_goal(user_request)
         criteria = self._infer_criteria(user_request)
         if extra_criteria:
@@ -133,6 +160,104 @@ class ContractBuilder:
             expected_state_changes=changes,
             risk_level=risk,
             approval_required_for=approvals,
+        )
+
+    def _build_llm(self, user_request: str, *, extra_criteria: list[dict] | None = None) -> TaskContract:
+        """
+        Build a TaskContract using the Gemini LLM with structured output.
+        """
+        # Lazy imports so we don't depend on Google GenAI SDK unless LLM mode is active
+        from google import genai
+        from google.genai import types
+
+        api_key = os.environ.get("GOOGLE_API_KEY")
+        if not api_key:
+            raise ValueError("GOOGLE_API_KEY environment variable is not set.")
+
+        client = genai.Client()
+
+        prompt = f"""
+You are an expert software agent coordinator.
+Your task is to analyze the following user request and generate a structured verification contract (TaskContract).
+This contract defines the goal, constraints, expected state changes, risk level, and verifiable success criteria for a software task.
+
+Success criteria should map to one of these verifier types:
+- `file_diff`: If the task requires modifying code/files (e.g. "fix bug", "refactor").
+- `test_pass`: If the task requires running tests (e.g. "run pytest", "ensure tests pass").
+- `doc_section`: If the task requires updating documentation files (e.g. "update readme", "add docstrings").
+- `pr_exists`: If the task requires opening a pull request (e.g. "create PR").
+- `command_output`: If the task requires running a shell command and checking for success.
+- `manual`: For tasks that can only be verified manually.
+
+Risk level must be one of: `low`, `medium`, `high`, `critical`.
+Include trigger terms in `approval_required_for` if the request mentions risky operations like deleting, deploying, releasing, or dropping databases.
+
+User Request:
+"{user_request}"
+"""
+
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=LLMTaskContract,
+                temperature=0.1,
+            ),
+        )
+
+        data = json.loads(response.text)
+
+        # Map risk level to Enum
+        risk_str = data.get("risk_level", "medium").lower()
+        if risk_str == "low":
+            risk = RiskLevel.LOW
+        elif risk_str == "high":
+            risk = RiskLevel.HIGH
+        elif risk_str == "critical":
+            risk = RiskLevel.CRITICAL
+        else:
+            risk = RiskLevel.MEDIUM
+
+        criteria = []
+        for c in data.get("success_criteria", []):
+            criteria.append(
+                SuccessCriterion(
+                    description=c.get("description", "Criterion"),
+                    verifier_type=c.get("verifier_type", VerifierType.MANUAL),
+                    verifier_config=c.get("verifier_config", {}),
+                    required=c.get("required", True),
+                )
+            )
+
+        if extra_criteria:
+            for c in extra_criteria:
+                criteria.append(
+                    SuccessCriterion(
+                        description=c["description"],
+                        verifier_type=c.get("verifier_type", VerifierType.MANUAL),
+                        verifier_config=c.get("verifier_config", {}),
+                        required=c.get("required", True),
+                    )
+                )
+
+        # Guarantee at least one criterion
+        if not criteria:
+            criteria.append(
+                SuccessCriterion(
+                    description="Task completed without errors",
+                    verifier_type=VerifierType.MANUAL,
+                )
+            )
+
+        return TaskContract(
+            user_request=user_request,
+            goal=data.get("goal", user_request),
+            constraints=data.get("constraints", []),
+            success_criteria=criteria,
+            expected_state_changes=data.get("expected_state_changes", []),
+            risk_level=risk,
+            approval_required_for=data.get("approval_required_for", []),
         )
 
     # ------------------------------------------------------------------

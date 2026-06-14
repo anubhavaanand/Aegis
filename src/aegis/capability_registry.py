@@ -195,6 +195,230 @@ class CapabilityRegistry:
     # Info
     # ------------------------------------------------------------------
 
+    def discover_from_mcp_config(self, config_path: str | None = None) -> None:
+        """
+        Auto-discover capabilities from installed MCP servers config files.
+        """
+        import os
+        import subprocess
+        import logging
+        
+        logger = logging.getLogger("aegis.capability_registry")
+
+        paths_to_try = []
+        if config_path:
+            paths_to_try.append(Path(config_path))
+        else:
+            paths_to_try.append(Path.home() / ".config" / "mcp" / "servers.json")
+            paths_to_try.append(Path.cwd() / ".mcp.json")
+            paths_to_try.append(Path.cwd() / "mcp.json")
+
+        data = {}
+        found_path = None
+        for p in paths_to_try:
+            if p.exists():
+                try:
+                    data = json.loads(p.read_text(encoding="utf-8"))
+                    found_path = p
+                    break
+                except Exception as e:
+                    logger.warning(f"Failed to parse MCP config at {p}: {e}")
+
+        if not found_path:
+            logger.info("No MCP servers configuration files found.")
+            return
+
+        servers = {}
+        if "mcpServers" in data:
+            servers = data["mcpServers"]
+        elif "servers" in data:
+            if isinstance(data["servers"], list):
+                for item in data["servers"]:
+                    if isinstance(item, dict) and "name" in item:
+                        servers[item["name"]] = item
+            elif isinstance(data["servers"], dict):
+                servers = data["servers"]
+
+        for server_name, server_cfg in servers.items():
+            if not isinstance(server_cfg, dict):
+                continue
+            command = server_cfg.get("command")
+            if not command:
+                continue
+            args = server_cfg.get("args", [])
+            env = server_cfg.get("env", None)
+
+            # Query tools from server
+            try:
+                tools = self._query_mcp_server_tools(command, args, env, logger)
+                for tool in tools:
+                    tool_name = tool.get("name")
+                    if not tool_name:
+                        continue
+                    cap = Capability(
+                        capability_id=f"mcp_{server_name}_{tool_name}",
+                        name=tool_name,
+                        type=CapabilityType.MCP,
+                        source=server_name,
+                        description=tool.get("description", ""),
+                        tags=["mcp", "auto-discovered"],
+                        risk_level=RiskLevel.MEDIUM,
+                    )
+                    self.register(cap)
+            except Exception as e:
+                logger.warning(f"Could not discover tools from MCP server {server_name}: {e}")
+
+    def _query_mcp_server_tools(
+        self, command: str, args: list[str], env: dict[str, str] | None, logger: Any
+    ) -> list[dict[str, Any]]:
+        import os
+        import subprocess
+        full_env = os.environ.copy()
+        if env:
+            full_env.update(env)
+
+        proc = subprocess.Popen(
+            [command] + args,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=full_env,
+            bufsize=1,
+        )
+
+        try:
+            # 1. Send initialize first (required by MCP)
+            init_req = {
+                "jsonrpc": "2.0",
+                "id": 0,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {},
+                    "clientInfo": {"name": "aegis", "version": "0.1.0"}
+                }
+            }
+            proc.stdin.write(json.dumps(init_req) + "\n")
+            proc.stdin.flush()
+            
+            # Discard initialize response
+            proc.stdout.readline()
+
+            # 2. Send tools/list request
+            req = {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/list",
+                "params": {}
+            }
+            proc.stdin.write(json.dumps(req) + "\n")
+            proc.stdin.flush()
+
+            # Read tools/list response
+            line = proc.stdout.readline()
+            if line:
+                res = json.loads(line)
+                if "result" in res and "tools" in res["result"]:
+                    return res["result"]["tools"]
+        finally:
+            proc.terminate()
+            try:
+                proc.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+
+        return []
+
+    def save_capability_manifest(self, path: str) -> None:
+        """
+        Save registered capabilities to a JSON manifest file.
+        """
+        from datetime import datetime, timezone
+        
+        manifest_data = {
+            "schema_version": "1.0",
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "capabilities": [cap.model_dump(mode="json") for cap in self.all(enabled_only=False)],
+        }
+        Path(path).write_text(json.dumps(manifest_data, indent=2), encoding="utf-8")
+
+    def load_capability_manifest(self, path: str) -> None:
+        """
+        Load capabilities from a JSON manifest file, skipping duplicates by capability_id.
+        """
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+        caps_list = data.get("capabilities", [])
+        for entry in caps_list:
+            cap = Capability(**entry)
+            if cap.capability_id not in self._store:
+                self.register(cap)
+
+    def rank_capabilities(self, capabilities: list[Capability], use_case: str) -> list[Capability]:
+        """
+        Rank a list of capabilities based on their suitability for a use-case.
+        Scoring system:
+        - Type score: local/mcp tools > skills > subagents > shell commands
+        - Risk penalty: higher risk gets penalized
+        - Use-case relevance: boosts score for tag/use-case/name/description matches
+        """
+        import re
+        
+        # Split use_case into keywords
+        keywords = [kw.lower() for kw in re.findall(r"\w+", use_case) if len(kw) > 1]
+        
+        def score_cap(cap: Capability) -> tuple[float, str]:
+            score = 0.0
+            
+            # 1. Type Score
+            t = str(cap.type).lower()
+            if t in ("local_tool", "mcp_tool", "mcp"):
+                score += 3.0
+            elif t == "skill":
+                score += 2.5
+            elif t == "subagent":
+                score += 2.0
+            elif t == "shell_command":
+                score += 1.0
+            else:
+                score += 1.0
+                
+            # 2. Risk Penalty
+            r = str(cap.risk_level).lower()
+            if r == "critical":
+                score -= 3.0
+            elif r == "high":
+                score -= 1.5
+            elif r == "medium":
+                score -= 0.5
+            elif r == "low":
+                score -= 0.0
+                
+            # 3. Use-case boost
+            pref_use_cases = [uc.lower() for uc in cap.preferred_use_cases]
+            cap_tags = [tag.lower() for tag in cap.tags]
+            cap_name = cap.name.lower()
+            cap_desc = cap.description.lower()
+            
+            for kw in keywords:
+                # Preferred use cases match
+                if any(kw in uc for uc in pref_use_cases):
+                    score += 2.0
+                # Tags match
+                if any(kw in tag for tag in cap_tags):
+                    score += 1.0
+                # Name match
+                if kw in cap_name:
+                    score += 0.5
+                # Description match
+                if kw in cap_desc:
+                    score += 0.5
+                    
+            return score, cap.name
+
+        # Sort by score descending, then by name ascending
+        return sorted(capabilities, key=lambda c: (-score_cap(c)[0], score_cap(c)[1]))
+
     def __len__(self) -> int:
         return len(self._store)
 

@@ -11,7 +11,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -65,6 +65,7 @@ class CapabilityType(str, Enum):
     LOCAL_TOOL = "local_tool"
     SHELL_COMMAND = "shell_command"
     MCP_TOOL = "mcp_tool"
+    MCP = "mcp"
     SKILL = "skill"
     PLUGIN = "plugin"
     WORKFLOW = "workflow"
@@ -308,6 +309,17 @@ class EvidenceSummary(BaseModel):
     traces: list[str] = Field(default_factory=list)
 
 
+class SemanticVerificationResult(BaseModel):
+    """The outcome of running semantic verification (LLM-as-Judge) on a task."""
+
+    semantic_score: float  # 0.0 to 1.0
+    reasoning: str
+    missed_intent: list[str] = Field(default_factory=list)
+    verdict: Literal["PASS", "WARN", "FAIL"]
+
+    model_config = {"use_enum_values": True}
+
+
 class ReconciliationReport(BaseModel):
     """
     The complete output of the Aegis reconciliation engine.
@@ -324,6 +336,9 @@ class ReconciliationReport(BaseModel):
     recommended_repairs: list[RepairStep] = Field(default_factory=list)
     evidence_summary: EvidenceSummary = Field(default_factory=EvidenceSummary)
     created_at: datetime = Field(default_factory=_now)
+    repair_iteration: int = 0
+    previous_failure_reason: str | None = None
+    semantic_verification: SemanticVerificationResult | None = None
 
     model_config = {"use_enum_values": True}
 
@@ -338,3 +353,23 @@ class ReconciliationReport(BaseModel):
     @property
     def has_missed_capabilities(self) -> bool:
         return bool(self.missed_capabilities)
+
+
+class WorkerResult(BaseModel):
+    """Container for the output of an execution agent run."""
+
+    trace_id: str
+    agent_id: str
+    claimed_success: bool
+    summary: str
+    tool_calls: list[dict[str, Any]] = Field(default_factory=list)
+    raw_spans: list[dict[str, Any]] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class NormalizedExecutionBundle(BaseModel):
+    """A unified execution bundle output format for all agent CLIs."""
+
+    worker_result: WorkerResult
+    events: list[EvidenceEvent] = Field(default_factory=list)
+

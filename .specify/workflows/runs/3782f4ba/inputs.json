@@ -1,0 +1,7 @@
+{
+  "inputs": {
+    "spec": "Build Aegis, a post-execution state reconciliation and trace audit layer for agent runtimes. It runs after a worker agent executes to verify task completion, check success criteria, detect silent failures/drifts, and propose corrective plans. Core components: Task Contract Builder, Capability Registry, ADK Adapter, Trace Adapter/Evidence Model, State Verifier, Reconciliation Engine, Repair Planner, Approval Manager. Stack: Python, Arize/Phoenix tracing, minimal terminal UI.",
+    "integration": "gemini",
+    "scope": "full"
+  }
+}

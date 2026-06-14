@@ -10,7 +10,7 @@
     "name": { "type": "string" },
     "type": {
       "type": "string",
-      "enum": ["local_tool", "shell_command", "mcp_tool", "skill", "plugin", "workflow", "subagent", "template", "external_api"]
+      "enum": ["local_tool", "shell_command", "mcp_tool", "mcp", "skill", "plugin", "workflow", "subagent", "template", "external_api"]
     },
     "source": { "type": "string", "description": "Where this capability comes from" },
     "description": { "type": "string" },

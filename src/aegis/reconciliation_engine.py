@@ -29,6 +29,7 @@ from .evidence_model import (
     UnmetCriterion,
 )
 from .state_verifier import StateVerifier, VerificationResult
+from .semantic_verifier import SemanticVerifier
 
 
 # ---------------------------------------------------------------------------
@@ -96,9 +97,11 @@ class ReconciliationEngine:
         self,
         state_verifier: StateVerifier | None = None,
         capability_auditor: object | None = None,
+        semantic_verifier: SemanticVerifier | None = None,
     ) -> None:
         self._verifier = state_verifier or StateVerifier()
         self._auditor = capability_auditor  # injected; optional for now
+        self._semantic_verifier = semantic_verifier or SemanticVerifier()
         self._classifier = DriftClassifier()
 
     def reconcile(
@@ -132,7 +135,7 @@ class ReconciliationEngine:
         # 5. Classify overall status
         status = self._classifier.classify(verification_results, missed)
 
-        return ReconciliationReport(
+        report = ReconciliationReport(
             task_id=contract.task_id,
             status=status,
             unmet_criteria=unmet,
@@ -140,6 +143,11 @@ class ReconciliationEngine:
             missed_capabilities=missed,
             evidence_summary=summary,
         )
+
+        semantic_result = self._semantic_verifier.verify(contract, events, report)
+        report.semantic_verification = semantic_result
+
+        return report
 
     # ------------------------------------------------------------------
     # Private helpers
