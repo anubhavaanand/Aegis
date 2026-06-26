@@ -141,6 +141,9 @@ class TerminalUI:
             )
         )
 
+        # Compliance scorecard (explanation + metrics) comes first
+        self._render_compliance_scorecard(report)
+
         # Evidence summary
         self._render_evidence_summary(report)
 
@@ -155,6 +158,71 @@ class TerminalUI:
         # Missed capabilities
         if report.missed_capabilities:
             self._render_missed_capabilities(report)
+
+    def _render_compliance_scorecard(self, report: ReconciliationReport) -> None:
+        """Render an Audit Explanation panel and a Compliance Scorecard panel."""
+        m = report.metrics
+
+        # ── Audit Explanation ────────────────────────────────────────────
+        if report.explanation:
+            self._console.print(
+                Panel(
+                    Text(report.explanation, style="italic dim"),
+                    title="[aegis.title]Audit Explanation[/]",
+                    border_style="cyan",
+                )
+            )
+
+        # ── Compliance Scorecard ─────────────────────────────────────────
+        score = m.compliance_score
+        if score >= 100:
+            score_color = "green"
+            score_icon = "✅"
+        elif score >= 50:
+            score_color = "yellow"
+            score_icon = "⚠️ "
+        else:
+            score_color = "red"
+            score_icon = "🔴"
+
+        table = Table(box=box.SIMPLE, show_header=False, padding=(0, 1))
+        table.add_column("Metric", style="bold cyan", width=26)
+        table.add_column("Value", justify="right")
+
+        table.add_row(
+            "Compliance Score",
+            f"[bold {score_color}]{score_icon} {score}%[/bold {score_color}]",
+        )
+        table.add_row(
+            "Objectives Met",
+            f"[bold]{m.satisfied_criteria} / {m.total_criteria}[/bold]",
+        )
+        table.add_row(
+            "Unmet Objectives",
+            f"[red]{m.unmet_criteria}[/red]" if m.unmet_criteria else "[green]0[/green]",
+        )
+        table.add_row(
+            "Weak Evidence Items",
+            f"[yellow]{m.weak_criteria}[/yellow]" if m.weak_criteria else "[green]0[/green]",
+        )
+        table.add_row(
+            "Missed Capabilities",
+            f"[magenta]{m.missed_capabilities_count}[/magenta]"
+            if m.missed_capabilities_count else "[green]0[/green]",
+        )
+        table.add_row(
+            "Unregistered Tools",
+            f"[red]{m.unknown_tools_flagged}[/red]"
+            if m.unknown_tools_flagged else "[green]0[/green]",
+        )
+
+        self._console.print(
+            Panel(
+                table,
+                title="[aegis.title]Compliance Scorecard[/]",
+                border_style="cyan",
+            )
+        )
 
     def _render_evidence_summary(self, report: ReconciliationReport) -> None:
         s = report.evidence_summary

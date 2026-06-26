@@ -23,6 +23,7 @@ from .evidence_model import (
     EventStatus,
     EventType,
     MissedCapability,
+    ReconciliationMetrics,
     ReconciliationReport,
     ReconciliationStatus,
     TaskContract,
@@ -113,7 +114,8 @@ class ReconciliationEngine:
         Core reconciliation: contract vs evidence.
 
         Returns a ReconciliationReport with status, unmet criteria,
-        weak evidence, missed capabilities, and repair recommendations.
+        weak evidence, missed capabilities, calculated compliance metrics,
+        a natural-language explanation, and repair recommendations.
         """
         # 1. Verify each criterion against real state
         verification_results = self._verifier.verify_all(
@@ -129,11 +131,34 @@ class ReconciliationEngine:
 
         # 4. Missed capability audit (delegate to auditor if available)
         missed: list[MissedCapability] = []
+        unknown_tools: list[str] = []
         if self._auditor:
             missed = self._auditor.audit(contract, events, verification_results)  # type: ignore[union-attr]
+            unknown_tools = self._auditor.audit_unknown_tools(events)  # type: ignore[union-attr]
 
         # 5. Classify overall status
         status = self._classifier.classify(verification_results, missed)
+
+        # 6. Calculate quantitative compliance metrics
+        total = len(contract.success_criteria)
+        unmet_count = len(unmet)
+        weak_count = len(weak)
+        satisfied = total - unmet_count
+        compliance_pct = round((satisfied / total) * 100, 2) if total > 0 else 100.0
+        metrics = ReconciliationMetrics(
+            total_criteria=total,
+            satisfied_criteria=satisfied,
+            unmet_criteria=unmet_count,
+            weak_criteria=weak_count,
+            compliance_score=compliance_pct,
+            missed_capabilities_count=len(missed),
+            unknown_tools_flagged=len(unknown_tools),
+        )
+
+        # 7. Construct natural-language explainability summary
+        explanation = self._build_explanation(
+            contract, unmet, weak, missed, unknown_tools
+        )
 
         report = ReconciliationReport(
             task_id=contract.task_id,
@@ -142,12 +167,58 @@ class ReconciliationEngine:
             weak_evidence=weak,
             missed_capabilities=missed,
             evidence_summary=summary,
+            metrics=metrics,
+            explanation=explanation,
         )
 
         semantic_result = self._semantic_verifier.verify(contract, events, report)
         report.semantic_verification = semantic_result
 
         return report
+
+    def _build_explanation(
+        self,
+        contract: TaskContract,
+        unmet: list[UnmetCriterion],
+        weak: list[UnmetCriterion],
+        missed: list[MissedCapability],
+        unknown_tools: list[str],
+    ) -> str:
+        """
+        Assemble an intuitive, human-readable audit narrative explaining
+        exactly what drifted and why, suitable for external audit logs.
+        """
+        if not unmet and not weak and not missed:
+            return (
+                "The agent executed the task exactly as specified. "
+                "All verified success criteria were fully satisfied."
+            )
+
+        lines = [f"Audit results for task: '{contract.goal}'"]
+
+        if unmet:
+            lines.append(f"\n• {len(unmet)} unmet objective(s) detected:")
+            for u in unmet:
+                note = f" ({u.notes})" if u.notes else ""
+                lines.append(f"  - Criterion skipped or absent: '{u.description}'{note}")
+
+        if weak:
+            lines.append(f"\n• {len(weak)} weakly-evidenced criterion/criteria:")
+            for w in weak:
+                note = f" ({w.notes})" if w.notes else ""
+                lines.append(f"  - Staged or partial evidence: '{w.description}'{note}")
+
+        if missed:
+            lines.append(f"\n• {len(missed)} capability recommendation(s):")
+            for m in missed:
+                lines.append(f"  - Recommended tool '{m.name}': {m.reason}")
+
+        if unknown_tools:
+            lines.append(f"\n• {len(unknown_tools)} unregistered tool(s) observed:")
+            for t in unknown_tools:
+                lines.append(f"  - Unregistered: '{t}'")
+
+        return "\n".join(lines)
 
     # ------------------------------------------------------------------
     # Private helpers

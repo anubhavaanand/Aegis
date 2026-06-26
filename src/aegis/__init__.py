@@ -1,6 +1,6 @@
 """Aegis — Post-execution state reconciliation and trace audit layer."""
 
-__version__ = "0.1.0"
+__version__ = "1.0.0"
 
 from .audit_logger import AuditLogger
 from .runner import AegisLoopRunner

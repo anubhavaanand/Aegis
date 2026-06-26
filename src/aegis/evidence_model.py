@@ -309,6 +309,18 @@ class EvidenceSummary(BaseModel):
     traces: list[str] = Field(default_factory=list)
 
 
+class ReconciliationMetrics(BaseModel):
+    """Quantitative compliance metrics produced during reconciliation."""
+
+    total_criteria: int = 0
+    satisfied_criteria: int = 0
+    unmet_criteria: int = 0
+    weak_criteria: int = 0
+    compliance_score: float = 0.0  # (satisfied / total) expressed as a percentage
+    missed_capabilities_count: int = 0
+    unknown_tools_flagged: int = 0
+
+
 class SemanticVerificationResult(BaseModel):
     """The outcome of running semantic verification (LLM-as-Judge) on a task."""
 
@@ -335,6 +347,8 @@ class ReconciliationReport(BaseModel):
     missed_capabilities: list[MissedCapability] = Field(default_factory=list)
     recommended_repairs: list[RepairStep] = Field(default_factory=list)
     evidence_summary: EvidenceSummary = Field(default_factory=EvidenceSummary)
+    metrics: ReconciliationMetrics = Field(default_factory=ReconciliationMetrics)
+    explanation: str = ""
     created_at: datetime = Field(default_factory=_now)
     repair_iteration: int = 0
     previous_failure_reason: str | None = None

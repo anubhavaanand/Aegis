@@ -1,9 +1,9 @@
 {
-  "task_id": "7806bfe0-a57b-4118-b84f-ebf74c70610f",
+  "task_id": "91b05bc9-c600-4443-a192-da0445ad04b3",
   "status": "partial",
   "unmet_criteria": [
     {
-      "criterion_id": "426318d8-9ae7-4e2f-b177-c8840a0ba2d3",
+      "criterion_id": "7ead2936-cd2a-4b9b-91d8-6788f5893b12",
       "description": "Tests pass: all relevant tests complete without failure",
       "evidence_quality": "absent",
       "notes": "No test execution events found in trace"
@@ -12,12 +12,12 @@
   "weak_evidence": [],
   "missed_capabilities": [
     {
-      "capability_id": "e3fc7e49-538b-465a-8092-b22879f911fb",
+      "capability_id": "4b94e028-22f1-4ac9-8d43-6f0d2de9bb6b",
       "name": "git_diff",
       "reason": "Criterion 'Tests pass: all relevant tests complete without failure' was not satisfied. 'git_diff' (Show file differences using git diff) was available and tagged for this use case but was not used.",
       "impact": "significant",
       "metadata": {
-        "criterion_id": "426318d8-9ae7-4e2f-b177-c8840a0ba2d3"
+        "criterion_id": "7ead2936-cd2a-4b9b-91d8-6788f5893b12"
       }
     }
   ],
@@ -32,17 +32,35 @@
     "test_results": 0,
     "capabilities_used": [
       "read_file",
+      "cd6faac4-699c-486d-8a80-3f4bfbf31437",
+      "write_file",
       "pytest_runner",
       "git_create_pr",
-      "5f357abf-ab07-4ce2-84cb-23376b8a3757",
-      "8f4ba914-e08b-4777-8fd2-d2e444a75901",
-      "write_file"
+      "70a8e8c0-319f-4351-b371-ed5e71196148"
     ],
     "traces": [
-      "c98678c4-b026-4c7f-87e4-2ed88a3b8206",
-      "1c3f4059-f7ee-48ee-adde-30ec988b4637",
-      "c98678c4-b026-4c7f-87e4-2ed88a3b8206-repair"
+      "ecb2e3e1-464d-4668-96ba-8d473cd73980-repair",
+      "615cbba6-4640-46c1-945e-4c1c25e63daa",
+      "ecb2e3e1-464d-4668-96ba-8d473cd73980"
     ]
   },
-  "created_at": "2026-06-10T17:45:59.442872Z"
+  "metrics": {
+    "total_criteria": 4,
+    "satisfied_criteria": 3,
+    "unmet_criteria": 1,
+    "weak_criteria": 0,
+    "compliance_score": 75.0,
+    "missed_capabilities_count": 1,
+    "unknown_tools_flagged": 4
+  },
+  "explanation": "Audit results for task: 'Fix the login validation bug, update docs, run tests, and create a PR.'\n\n\u2022 1 unmet objective(s) detected:\n  - Criterion skipped or absent: 'Tests pass: all relevant tests complete without failure' (No test execution events found in trace)\n\n\u2022 1 capability recommendation(s):\n  - Recommended tool 'git_diff': Criterion 'Tests pass: all relevant tests complete without failure' was not satisfied. 'git_diff' (Show file differences using git diff) was available and tagged for this use case but was not used.\n\n\u2022 4 unregistered tool(s) observed:\n  - Unregistered: 'write_file'\n  - Unregistered: 'git_create_pr'\n  - Unregistered: 'read_file'\n  - Unregistered: 'pytest_runner'",
+  "created_at": "2026-06-26T17:47:27.453453Z",
+  "repair_iteration": 0,
+  "previous_failure_reason": null,
+  "semantic_verification": {
+    "semantic_score": 0.5,
+    "reasoning": "Semantic verification skipped.",
+    "missed_intent": [],
+    "verdict": "WARN"
+  }
 }

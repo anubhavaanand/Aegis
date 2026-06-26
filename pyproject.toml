@@ -1,10 +1,10 @@
 [build-system]
 requires = ["setuptools>=68", "wheel"]
-build-backend = "setuptools.backends.legacy:build"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "aegis"
-version = "0.1.0"
+version = "1.0.0"
 description = "Post-execution state reconciliation and trace audit layer for agent runtimes"
 readme = "README.md"
 requires-python = ">=3.11"

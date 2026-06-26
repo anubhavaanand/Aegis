@@ -1,32 +1,32 @@
 {
-  "task_id": "7806bfe0-a57b-4118-b84f-ebf74c70610f",
+  "task_id": "91b05bc9-c600-4443-a192-da0445ad04b3",
   "user_request": "Fix the login validation bug, update docs, run tests, and create a PR.",
   "goal": "Fix the login validation bug, update docs, run tests, and create a PR.",
   "constraints": [],
   "success_criteria": [
     {
-      "criterion_id": "622ff8c1-bf57-4bda-8dbc-1af6c7ea4ec9",
+      "criterion_id": "0c05daf9-acb3-4f58-844e-6fb8867d4f66",
       "description": "Bug is fixed: source code diff exists with the change",
       "verifier_type": "file_diff",
       "verifier_config": {},
       "required": true
     },
     {
-      "criterion_id": "426318d8-9ae7-4e2f-b177-c8840a0ba2d3",
+      "criterion_id": "7ead2936-cd2a-4b9b-91d8-6788f5893b12",
       "description": "Tests pass: all relevant tests complete without failure",
       "verifier_type": "test_pass",
       "verifier_config": {},
       "required": true
     },
     {
-      "criterion_id": "4d0cdc4d-365d-48eb-9138-b63138349e4e",
+      "criterion_id": "380a1e29-c34a-42a8-94df-ee1fc7573126",
       "description": "Documentation updated: relevant doc sections exist and are current",
       "verifier_type": "doc_section",
       "verifier_config": {},
       "required": true
     },
     {
-      "criterion_id": "fa4b3405-3e5b-482b-8f69-b2979b309cbb",
+      "criterion_id": "1de12592-ac30-450a-aec0-66b4b64d5b34",
       "description": "Pull request created or exists in the repository",
       "verifier_type": "pr_exists",
       "verifier_config": {},
@@ -43,6 +43,6 @@
   "approval_required_for": [
     "pr"
   ],
-  "created_at": "2026-06-10T17:45:53.806650Z",
+  "created_at": "2026-06-26T17:47:21.745280Z",
   "tags": []
 }

@@ -2,15 +2,15 @@
 Aegis Policy Engine
 
 Evaluates whether proposed repair plans are allowed to run, require human
-approval, or must be blocked immediately. Supports in-process risk and
-protected path rules, as well as REST-based delegation to Open Policy Agent (OPA).
+approval, or must be blocked immediately [1]. Supports strict, normalized in-process path
+restrictions [1], as well as REST-based delegation to Open Policy Agent (OPA) [1].
 """
 
 from __future__ import annotations
 
+import logging
 import os
 import json
-import logging
 import urllib.request
 from pathlib import Path
 from typing import Any
@@ -36,11 +36,13 @@ class PolicyDecision(BaseModel):
 
 class PolicyEngine:
     """
-    Evaluates repair actions against safety and compliance policies.
+    Evaluates repair actions against safety and compliance policies [1].
     """
 
-    def __init__(self, opa_url: str | None = None) -> None:
+    def __init__(self, opa_url: str | None = None, workspace_root: str | Path | None = None) -> None:
         self.opa_url = opa_url or os.environ.get("AEGIS_OPA_URL", "http://localhost:8181")
+        # Secure default: Lockdown to current working directory unless explicitly overridden
+        self.workspace_root = Path(workspace_root).resolve() if workspace_root else Path.cwd().resolve()
 
     def evaluate(
         self,
@@ -50,9 +52,8 @@ class PolicyEngine:
         events: list[Any],
     ) -> PolicyDecision:
         """
-        Evaluate if the repair plan violates any policy.
+        Evaluate if the repair plan violates any policy [1].
         """
-        # Determine modified paths from events & repair steps
         modified_paths = self._extract_modified_paths(events, repair_steps)
 
         # Build policy input payload
@@ -80,13 +81,11 @@ class PolicyEngine:
     def _extract_modified_paths(self, events: list[Any], repair_steps: list[RepairStep]) -> list[str]:
         paths = set()
         for e in events:
-            # Check event type and input summary / artifacts
             e_type = getattr(e, "event_type", None)
             if e_type in ("file_change", EventType.FILE_CHANGE):
                 input_sum = getattr(e, "input_summary", "")
                 if input_sum:
                     paths.add(input_sum)
-            # Check artifacts
             artifacts = getattr(e, "artifacts", [])
             for art in artifacts:
                 art_type = getattr(art, "type", None)
@@ -94,7 +93,6 @@ class PolicyEngine:
                 if art_type == "file" and art_path:
                     paths.add(art_path)
 
-        # Check repair steps metadata for paths if any
         for step in repair_steps:
             target_file = step.metadata.get("target_file")
             if target_file:
@@ -108,7 +106,7 @@ class PolicyEngine:
         """
         url = f"{self.opa_url.rstrip('/')}/v1/data/aegis/policy/decision"
         payload = {"input": policy_input}
-        
+
         try:
             req = urllib.request.Request(
                 url,
@@ -116,7 +114,6 @@ class PolicyEngine:
                 headers={"Content-Type": "application/json"},
                 method="POST",
             )
-            # Short timeout to keep fallback fast
             with urllib.request.urlopen(req, timeout=3.0) as response:
                 if response.status == 200:
                     res_body = json.loads(response.read().decode("utf-8"))
@@ -129,7 +126,7 @@ class PolicyEngine:
                         )
         except Exception as e:
             logger.warning(f"OPA REST request failed: {e}")
-            
+
         return None
 
     def _evaluate_in_process(
@@ -139,33 +136,53 @@ class PolicyEngine:
         modified_paths: list[str],
     ) -> PolicyDecision:
         """
-        Default in-process policy rules.
+        Default in-process policy rules with absolute, normalized path check boundaries.
         """
-        # 1. Protected paths check
-        protected_env = os.environ.get("AEGIS_PROTECTED_PATHS", "")
-        if protected_env:
-            protected_paths = [p.strip() for p in protected_env.split(",") if p.strip()]
-            for path in modified_paths:
-                for p in protected_paths:
-                    # Match if the path is relative to the protected prefix or contains it
-                    try:
-                        resolved_path = Path(path).resolve()
-                        resolved_p = Path(p).resolve()
-                        if resolved_path.is_relative_to(resolved_p) or p in path:
-                            return PolicyDecision(
-                                allow=False,
-                                requires_human=True,
-                                reason=f"Modification of protected path detected: '{path}' matching pattern '{p}'",
-                            )
-                    except Exception:
-                        if p in path:
-                            return PolicyDecision(
-                                allow=False,
-                                requires_human=True,
-                                reason=f"Modification of protected path detected: '{path}' matching pattern '{p}'",
-                            )
+        safe_root = self.workspace_root
 
-        # 2. Risk level checks
+        for path in modified_paths:
+            try:
+                p_obj = Path(path)
+                # Ensure path resolves safely relative to the defined workspace root
+                if not p_obj.is_absolute():
+                    resolved_path = (safe_root / p_obj).resolve()
+                else:
+                    resolved_path = p_obj.resolve()
+
+                # Traversal validation guard
+                if not resolved_path.is_relative_to(safe_root):
+                    return PolicyDecision(
+                        allow=False,
+                        requires_human=True,
+                        reason=f"Security Block: Traversal escape detected. Access to '{path}' (resolved: '{resolved_path}') violates workspace constraints.",
+                    )
+
+                # Strict boundary check against protected configurations
+                protected_env = os.environ.get("AEGIS_PROTECTED_PATHS", "")
+                if protected_env:
+                    protected_paths = [p.strip() for p in protected_env.split(",") if p.strip()]
+                    for pattern in protected_paths:
+                        pat_obj = Path(pattern)
+                        if not pat_obj.is_absolute():
+                            resolved_pattern = (safe_root / pat_obj).resolve()
+                        else:
+                            resolved_pattern = pat_obj.resolve()
+
+                        if resolved_path.is_relative_to(resolved_pattern) or resolved_path == resolved_pattern:
+                            return PolicyDecision(
+                                allow=False,
+                                requires_human=True,
+                                reason=f"Policy Block: Modification of restricted tree detected: '{path}' matching protected configuration '{pattern}'",
+                            )
+            except Exception as e:
+                # Fail-secure posture on unexpected path resolution errors
+                return PolicyDecision(
+                    allow=False,
+                    requires_human=True,
+                    reason=f"Security Block: Verification failed resolving path '{path}': {e}",
+                )
+
+        # Risk level assessment rules
         risk_val = contract.risk_level.value if hasattr(contract.risk_level, "value") else str(contract.risk_level)
         risk = risk_val.lower()
         if risk == "critical":
@@ -181,21 +198,18 @@ class PolicyEngine:
                 reason="High-risk tasks require human oversight before corrective actions are applied",
             )
         elif risk == "medium":
-            # Require human oversight if there is actual drift / unmet criteria
             if report.unmet_criteria:
                 return PolicyDecision(
                     allow=False,
                     requires_human=True,
                     reason="Medium-risk tasks with unmet success criteria require human approval",
                 )
-            # Else, allow automated repair if only weak evidence / missed capabilities exist
             return PolicyDecision(
                 allow=True,
                 requires_human=False,
                 reason="Medium-risk tasks with no unmet criteria are automatically approved",
             )
         else:
-            # Low risk tasks are auto-approved
             return PolicyDecision(
                 allow=True,
                 requires_human=False,

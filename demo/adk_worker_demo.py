@@ -101,10 +101,12 @@ def run_demo(auto_approve: bool = False) -> None:
     # The worker intentionally skips docs and PR to trigger drift detection
     worker = SimulatedADKWorker(agent_id="adk-demo-worker")
     adapter = ADKAdapter(worker=worker, agent_id="adk-demo-worker")
-    worker_result, events = adapter.run_and_collect(
+    bundle = adapter.run_and_collect(
         user_request,
         skip_steps=["skip_docs"],  # docs skipped, PR not created either
     )
+    worker_result = bundle.worker_result
+    events = bundle.events
 
     console.print(f"\n[bold]Worker claimed success:[/bold] {worker_result.claimed_success}")
     console.print(f"[bold]Summary:[/bold] {worker_result.summary}")
@@ -199,10 +201,11 @@ def run_demo(auto_approve: bool = False) -> None:
     # Second pass: now include docs and PR
     repair_worker = SimulatedADKWorker(agent_id="adk-repair-worker")
     repair_adapter = ADKAdapter(worker=repair_worker, agent_id="adk-repair-worker")
-    _, repair_events = repair_adapter.run_and_collect(
+    repair_bundle = repair_adapter.run_and_collect(
         "Update documentation and create PR for login fix",
         skip_steps=["include_pr"],  # this triggers PR creation
     )
+    repair_events = list(repair_bundle.events)
 
     # Simulate doc update event — look up real registry capability_id
     from aegis.evidence_model import EvidenceEvent, EventType, EventStatus, Artifact

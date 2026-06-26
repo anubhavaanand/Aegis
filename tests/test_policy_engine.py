@@ -99,7 +99,9 @@ class TestPolicyEngineInProcess:
             
             assert decision.allow is False
             assert decision.requires_human is True
-            assert "protected path" in decision.reason.lower()
+            # The hardened verifier emits a "traversal escape" / "workspace constraints" message
+            reason_lower = decision.reason.lower()
+            assert "traversal" in reason_lower or "workspace constraints" in reason_lower or "protected path" in reason_lower
 
 
 class TestPolicyEngineOPADelegation:

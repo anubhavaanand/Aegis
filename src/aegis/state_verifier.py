@@ -11,8 +11,10 @@ returns a VerificationResult with quality scoring.
 
 from __future__ import annotations
 
+import ast
 import re
 import subprocess
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Protocol
 
@@ -98,39 +100,41 @@ class FileDiffVerifier:
             )
 
         # Fall back to git diff on workspace
-        if workspace and (workspace / ".git").exists():
-            try:
-                result = subprocess.run(
-                    ["git", "diff", "--stat"],
-                    cwd=workspace,
-                    capture_output=True,
-                    text=True,
-                    timeout=10,
-                )
-                if result.stdout.strip():
-                    return VerificationResult(
-                        criterion.criterion_id,
-                        passed=True,
-                        quality=EvidenceQuality.STRONG,
-                        notes=f"git diff shows changes: {result.stdout.strip()[:200]}",
+        if workspace:
+            safe_root = workspace.resolve()
+            if (safe_root / ".git").exists():
+                try:
+                    result = subprocess.run(
+                        ["git", "diff", "--stat"],
+                        cwd=safe_root,
+                        capture_output=True,
+                        text=True,
+                        timeout=10,
                     )
-                # Check staged
-                result2 = subprocess.run(
-                    ["git", "diff", "--cached", "--stat"],
-                    cwd=workspace,
-                    capture_output=True,
-                    text=True,
-                    timeout=10,
-                )
-                if result2.stdout.strip():
-                    return VerificationResult(
-                        criterion.criterion_id,
-                        passed=True,
-                        quality=EvidenceQuality.WEAK,
-                        notes="Staged changes found (not yet committed)",
+                    if result.stdout.strip():
+                        return VerificationResult(
+                            criterion.criterion_id,
+                            passed=True,
+                            quality=EvidenceQuality.STRONG,
+                            notes=f"git diff shows changes: {result.stdout.strip()[:200]}",
+                        )
+                    # Check staged
+                    result2 = subprocess.run(
+                        ["git", "diff", "--cached", "--stat"],
+                        cwd=safe_root,
+                        capture_output=True,
+                        text=True,
+                        timeout=10,
                     )
-            except (subprocess.TimeoutExpired, FileNotFoundError):
-                pass
+                    if result2.stdout.strip():
+                        return VerificationResult(
+                            criterion.criterion_id,
+                            passed=True,
+                            quality=EvidenceQuality.WEAK,
+                            notes="Staged changes found (not yet committed)",
+                        )
+                except (subprocess.TimeoutExpired, FileNotFoundError):
+                    pass
 
         return VerificationResult(
             criterion.criterion_id,
@@ -141,7 +145,7 @@ class FileDiffVerifier:
 
 
 class TestPassVerifier:
-    """Verifies that tests passed by inspecting test_result evidence events."""
+    """Verifies that tests passed programmatically using JUnit XML reports or trace events."""
 
     def verify(
         self,
@@ -149,12 +153,69 @@ class TestPassVerifier:
         events: list[EvidenceEvent],
         workspace: Path | None,
     ) -> VerificationResult:
-        test_events = [
-            e for e in events
-            if e.event_type == EventType.TEST_RESULT
-        ]
+        # Programmatic check: Read and parse JUnit XML report if specified in configuration
+        junit_xml_path = criterion.verifier_config.get("junit_xml_path")
+        if junit_xml_path and workspace:
+            try:
+                safe_root = workspace.resolve()
+                target_xml = (safe_root / junit_xml_path).resolve()
+
+                # Workspace isolation guard
+                if not target_xml.is_relative_to(safe_root):
+                    return VerificationResult(
+                        criterion.criterion_id,
+                        passed=False,
+                        quality=EvidenceQuality.ABSENT,
+                        notes=f"Security Block: JUnit XML path {junit_xml_path} attempts workspace escape.",
+                    )
+
+                if target_xml.exists() and target_xml.is_file():
+                    tree = ET.parse(target_xml)
+                    root = tree.getroot()
+
+                    failures = 0
+                    errors = 0
+                    tests = 0
+
+                    if root.tag == "testsuite":
+                        failures = int(root.attrib.get("failures", 0))
+                        errors = int(root.attrib.get("errors", 0))
+                        tests = int(root.attrib.get("tests", 0))
+                    else:
+                        for suite in root.findall(".//testsuite"):
+                            failures += int(suite.attrib.get("failures", 0))
+                            errors += int(suite.attrib.get("errors", 0))
+                            tests += int(suite.attrib.get("tests", 0))
+
+                    if tests == 0:
+                        return VerificationResult(
+                            criterion.criterion_id,
+                            passed=False,
+                            quality=EvidenceQuality.WEAK,
+                            notes=f"JUnit XML parse found 0 tests executed in {junit_xml_path}",
+                        )
+
+                    if failures > 0 or errors > 0:
+                        return VerificationResult(
+                            criterion.criterion_id,
+                            passed=False,
+                            quality=EvidenceQuality.STRONG,
+                            notes=f"Programmatic failure verification: {failures} failures, {errors} errors in {junit_xml_path}",
+                        )
+
+                    return VerificationResult(
+                        criterion.criterion_id,
+                        passed=True,
+                        quality=EvidenceQuality.STRONG,
+                        notes=f"Programmatic success verification: {tests} tests passed in {junit_xml_path}",
+                    )
+            except Exception as e:
+                # Log parser error but fallback gracefully to traces
+                pass
+
+        # Fallback 2: Check trace event metrics
+        test_events = [e for e in events if e.event_type == EventType.TEST_RESULT]
         if not test_events:
-            # Try to find command events that look like test runs
             test_cmds = [
                 e for e in events
                 if e.event_type == EventType.COMMAND
@@ -199,11 +260,9 @@ class TestPassVerifier:
 
 
 class DocSectionVerifier:
-    """Verifies that documentation was updated."""
+    """Verifies that documentation was updated programmatically (AST or Markdown structure)."""
 
-    DOC_PATTERNS = re.compile(
-        r"\.(md|rst|txt|adoc)$", re.I
-    )
+    DOC_PATTERNS = re.compile(r"\.(md|rst|txt|adoc)$", re.I)
 
     def verify(
         self,
@@ -211,16 +270,82 @@ class DocSectionVerifier:
         events: list[EvidenceEvent],
         workspace: Path | None,
     ) -> VerificationResult:
-        # Check for doc file changes in evidence
+        # Programmatic check: Run structured AST/Markdown parsing if target_file is configured
+        doc_file_path = criterion.verifier_config.get("doc_file")
+        if doc_file_path and workspace:
+            try:
+                safe_root = workspace.resolve()
+                target_doc = (safe_root / doc_file_path).resolve()
+
+                # Workspace isolation guard
+                if not target_doc.is_relative_to(safe_root):
+                    return VerificationResult(
+                        criterion.criterion_id,
+                        passed=False,
+                        quality=EvidenceQuality.ABSENT,
+                        notes=f"Security Block: Doc path {doc_file_path} attempts workspace escape.",
+                    )
+
+                if target_doc.exists() and target_doc.is_file():
+                    content = target_doc.read_text(encoding="utf-8")
+
+                    # 1. AST Validation for Python files (validating API docs/docstrings)
+                    if doc_file_path.endswith(".py"):
+                        parsed = ast.parse(content)
+                        required_fns = criterion.verifier_config.get("required_functions", [])
+                        if required_fns:
+                            missing_docs = []
+                            for node in ast.walk(parsed):
+                                if isinstance(node, ast.FunctionDef) and node.name in required_fns:
+                                    docstring = ast.get_docstring(node)
+                                    if not docstring or not docstring.strip():
+                                        missing_docs.append(node.name)
+                            if missing_docs:
+                                return VerificationResult(
+                                    criterion.criterion_id,
+                                    passed=False,
+                                    quality=EvidenceQuality.STRONG,
+                                    notes=f"AST verification failed: Missing docstrings in target functions: {', '.join(missing_docs)} inside {doc_file_path}",
+                                )
+                            return VerificationResult(
+                                criterion.criterion_id,
+                                passed=True,
+                                quality=EvidenceQuality.STRONG,
+                                notes=f"AST verification passed: Docstrings exist for {', '.join(required_fns)} inside {doc_file_path}",
+                            )
+
+                    # 2. Section Heading check for Markdown
+                    elif doc_file_path.endswith(".md"):
+                        required_headers = criterion.verifier_config.get("required_headers", [])
+                        if required_headers:
+                            missing_headers = []
+                            for header in required_headers:
+                                header_pattern = re.compile(rf"^\s*#+\s+{re.escape(header)}\s*$", re.M | re.I)
+                                if not header_pattern.search(content):
+                                    missing_headers.append(header)
+                            if missing_headers:
+                                return VerificationResult(
+                                    criterion.criterion_id,
+                                    passed=False,
+                                    quality=EvidenceQuality.STRONG,
+                                    notes=f"Markdown verification failed: Missing structural headers: {', '.join(missing_headers)} in {doc_file_path}",
+                                )
+                            return VerificationResult(
+                                criterion.criterion_id,
+                                passed=True,
+                                quality=EvidenceQuality.STRONG,
+                                notes=f"Markdown verification passed: Found required headers in {doc_file_path}",
+                            )
+            except Exception as e:
+                # Fallback on parse failure
+                pass
+
+        # Fallback to simple trace checking
         doc_changes = [
             e for e in events
             if e.event_type == EventType.FILE_CHANGE
             and e.status == EventStatus.SUCCESS
-            and any(
-                self.DOC_PATTERNS.search(a.path or "")
-                for a in e.artifacts
-                if a.path
-            )
+            and any(self.DOC_PATTERNS.search(a.path or "") for a in e.artifacts if a.path)
         ]
         if doc_changes:
             return VerificationResult(
@@ -230,20 +355,16 @@ class DocSectionVerifier:
                 notes=f"{len(doc_changes)} documentation file(s) updated",
             )
 
-        # Check workspace for recently modified doc files
         if workspace:
             try:
                 result = subprocess.run(
                     ["git", "diff", "--name-only", "--diff-filter=AM"],
-                    cwd=workspace,
+                    cwd=workspace.resolve(),
                     capture_output=True,
                     text=True,
                     timeout=10,
                 )
-                doc_files = [
-                    f for f in result.stdout.splitlines()
-                    if self.DOC_PATTERNS.search(f)
-                ]
+                doc_files = [f for f in result.stdout.splitlines() if self.DOC_PATTERNS.search(f)]
                 if doc_files:
                     return VerificationResult(
                         criterion.criterion_id,
@@ -283,9 +404,7 @@ class PRExistsVerifier:
         ]
         if pr_events:
             pr = pr_events[0]
-            url = next(
-                (a.url for a in pr.artifacts if a.url), "unknown"
-            )
+            url = next((a.url for a in pr.artifacts if a.url), "unknown")
             return VerificationResult(
                 criterion.criterion_id,
                 passed=True,
@@ -326,10 +445,7 @@ class CommandOutputVerifier:
         workspace: Path | None,
     ) -> VerificationResult:
         expected_pattern = criterion.verifier_config.get("expected_pattern", "")
-        cmd_events = [
-            e for e in events
-            if e.event_type == EventType.COMMAND
-        ]
+        cmd_events = [e for e in events if e.event_type == EventType.COMMAND]
         if not cmd_events:
             return VerificationResult(
                 criterion.criterion_id,
@@ -340,9 +456,7 @@ class CommandOutputVerifier:
 
         for ev in cmd_events:
             if ev.status == EventStatus.SUCCESS:
-                if not expected_pattern or re.search(
-                    expected_pattern, ev.output_summary, re.I
-                ):
+                if not expected_pattern or re.search(expected_pattern, ev.output_summary, re.I):
                     return VerificationResult(
                         criterion.criterion_id,
                         passed=True,
@@ -387,8 +501,6 @@ class StateVerifier:
     For each criterion in a TaskContract, dispatches to the appropriate
     verifier based on verifier_type.
     """
-
-    _VERIFIER_MAP: dict[str, object] = {}
 
     def __init__(self, workspace: str | Path | None = None) -> None:
         self.workspace = Path(workspace) if workspace else None

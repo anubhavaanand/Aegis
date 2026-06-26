@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+import sys
+import types
 from unittest.mock import MagicMock, patch
 import pytest
 
@@ -81,9 +83,19 @@ class TestSemanticVerifier:
         mock_response.text = '{"semantic_score": 0.9, "reasoning": "Tasks were mostly completed, but docs are missing.", "missed_intent": ["Add API documentation"], "verdict": "PASS"}'
         mock_client.models.generate_content.return_value = mock_response
 
-        # Mock the entire google.genai module
+        # Inject a fake google.genai module so the import inside SemanticVerifier succeeds
+        mock_genai_mod = MagicMock()
+        mock_genai_mod.Client.return_value = mock_client
+        mock_types_mod = MagicMock()
+        mock_google_mod = types.ModuleType("google")
+        mock_google_mod.genai = mock_genai_mod  # type: ignore[attr-defined]
+
         with patch.dict(os.environ, {"AEGIS_SEMANTIC_VERIFY": "true", "GOOGLE_API_KEY": "fake-key"}):
-            with patch("google.genai.Client", return_value=mock_client):
+            with patch.dict(sys.modules, {
+                "google": mock_google_mod,
+                "google.genai": mock_genai_mod,
+                "google.genai.types": mock_types_mod,
+            }):
                 verifier = SemanticVerifier()
                 result = verifier.verify(sample_contract, [], sample_report)
 
@@ -92,7 +104,7 @@ class TestSemanticVerifier:
                 assert result.verdict == "PASS"
                 assert "missing" in result.reasoning
                 assert result.missed_intent == ["Add API documentation"]
-                
+
                 # Check that client generate_content was called
                 mock_client.models.generate_content.assert_called_once()
 
@@ -100,8 +112,19 @@ class TestSemanticVerifier:
         mock_client = MagicMock()
         mock_client.models.generate_content.side_effect = Exception("API connection timed out")
 
+        # Inject a fake google.genai module
+        mock_genai_mod = MagicMock()
+        mock_genai_mod.Client.return_value = mock_client
+        mock_types_mod = MagicMock()
+        mock_google_mod = types.ModuleType("google")
+        mock_google_mod.genai = mock_genai_mod  # type: ignore[attr-defined]
+
         with patch.dict(os.environ, {"AEGIS_SEMANTIC_VERIFY": "true", "GOOGLE_API_KEY": "fake-key"}):
-            with patch("google.genai.Client", return_value=mock_client):
+            with patch.dict(sys.modules, {
+                "google": mock_google_mod,
+                "google.genai": mock_genai_mod,
+                "google.genai.types": mock_types_mod,
+            }):
                 verifier = SemanticVerifier()
                 result = verifier.verify(sample_contract, [], sample_report)
 
